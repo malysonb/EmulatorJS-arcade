@@ -1606,6 +1606,41 @@ class EmulatorJS {
             if (this.settings['save-state-location'] === "browser" && this.saveInBrowserSupported()) {
                 this.storage.states.put(this.getBaseFileName()+".state", state);
                 this.displayMessage(this.localization("SAVE SAVED TO BROWSER"));
+            }if (this.settings['save-state-location'] === "server") {
+                const blob = new Blob([state]);
+                const reader = new FileReader();
+                const postmap = this.settings['save-state-location-url'];
+                const filename = this.getBaseFileName();
+                const self = this;
+                reader.onloadend = function() {
+                    const base64data = reader.result.split(',')[1]; // Obter apenas os dados base64
+                
+                    fetch(postmap, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json' // Definindo o Content-Type como application/json
+                        },
+                        body: JSON.stringify({
+                            name: filename + ".state",
+                            data: base64data
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            console.log("Estado salvo com sucesso!");
+                            self.displayMessage(self.localization("SAVE SAVED TO SERVER"));
+                        } else {
+                            console.error("Falha ao salvar o estado.");
+                            self.displayMessage(self.localization("ERROR SAVING TO SERVER"));
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Erro:", error);
+                        self.displayMessage(self.localization("ERROR SAVING TO SERVER"));
+                    });
+                };
+                reader.readAsDataURL(blob);
             } else {
                 const blob = new Blob([state]);
                 stateUrl = URL.createObjectURL(blob);
@@ -1623,6 +1658,34 @@ class EmulatorJS {
                     this.gameManager.loadState(e);
                     this.displayMessage(this.localization("SAVE LOADED FROM BROWSER"));
                 })
+            }if (this.settings['save-state-location'] === "server") {
+                const getmap = this.settings['load-state-location-url'];
+                const filename = this.getBaseFileName();
+                fetch(getmap, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json' // Definindo o Content-Type como application/json
+                    },
+                    body: JSON.stringify({
+                        name: filename + ".state"
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const base64data = data.data; // O servidor já enviou em Base64
+                        const decodedDataArray = Uint8Array.from(atob(base64data), c => c.charCodeAt(0));
+                        this.gameManager.loadState(decodedDataArray); // Chama diretamente
+                        this.displayMessage(this.localization("SAVE LOADED FROM SERVER"));
+                    } else {
+                        console.error("Falha ao carregar o estado.");
+                        self.displayMessage(self.localization("ERROR LOADING FROM SERVER"));
+                    }
+                })
+                .catch(error => {
+                    console.error("Erro:", error);
+                    self.displayMessage(self.localization("ERROR LOADING FROM SERVER"));
+                });
             } else {
                 const file = await this.selectFile();
                 const state = new Uint8Array(await file.arrayBuffer());
@@ -4429,7 +4492,8 @@ class EmulatorJS {
             addToMenu(this.localization('Save State Slot'), 'save-state-slot', ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "1", saveStateOpts, true);
             addToMenu(this.localization('Save State Location'), 'save-state-location', {
                 'download': this.localization("Download"),
-                'browser': this.localization("Keep in Browser")
+                'browser': this.localization("Keep in Browser"),
+                'server': "Servidor"
             }, 'download', saveStateOpts, true);
         }
         

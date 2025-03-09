@@ -189,14 +189,14 @@ class EJS_GameManager {
     loadState(state) {
         try {
             this.FS.unlink('game.state');
-        } catch(e){}
+        } catch(e){console.log(e);}
         this.FS.writeFile('/game.state', state);
         this.clearEJSResetTimer();
         this.functions.loadState("game.state", 0);
         setTimeout(() => {
             try {
                 this.FS.unlink('game.state');
-            } catch(e){}
+            } catch(e){console.log(e);}
         }, 5000)
     }
     screenshot() {
