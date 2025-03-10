@@ -1610,8 +1610,10 @@ class EmulatorJS {
                 const blob = new Blob([state]);
                 const reader = new FileReader();
                 const postmap = this.settings['save-state-location-url'];
+                const gameid = this.settings['game-id'];
                 const filename = this.getBaseFileName();
                 const self = this;
+                const sslot = this.settings['save-state-slot'];
                 reader.onloadend = function() {
                     const base64data = reader.result.split(',')[1]; // Obter apenas os dados base64
                 
@@ -1622,22 +1624,24 @@ class EmulatorJS {
                         },
                         body: JSON.stringify({
                             name: filename + ".state",
-                            data: base64data
+                            data: base64data,
+                            id: gameid,
+                            slot: sslot
                         })
                     })
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
                             console.log("Estado salvo com sucesso!");
-                            self.displayMessage(self.localization("SAVE SAVED TO SERVER"));
+                            this.displayMessage(this.localization("SAVE SAVED TO SERVER"));
                         } else {
                             console.error("Falha ao salvar o estado.");
-                            self.displayMessage(self.localization("ERROR SAVING TO SERVER"));
+                            this.displayMessage(this.localization("ERROR SAVING TO SERVER"));
                         }
                     })
                     .catch(error => {
                         console.error("Erro:", error);
-                        self.displayMessage(self.localization("ERROR SAVING TO SERVER"));
+                        this.displayMessage(this.localization("ERROR SAVING TO SERVER"));
                     });
                 };
                 reader.readAsDataURL(blob);
@@ -1661,13 +1665,17 @@ class EmulatorJS {
             }if (this.settings['save-state-location'] === "server") {
                 const getmap = this.settings['load-state-location-url'];
                 const filename = this.getBaseFileName();
+                const gameid = this.settings['game-id'];
+                const sslot = this.settings['save-state-slot'];
                 fetch(getmap, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json' // Definindo o Content-Type como application/json
                     },
                     body: JSON.stringify({
-                        name: filename + ".state"
+                        name: filename + ".state",
+                        id: gameid,
+                        slot: sslot
                     })
                 })
                 .then(response => response.json())
@@ -1679,12 +1687,12 @@ class EmulatorJS {
                         this.displayMessage(this.localization("SAVE LOADED FROM SERVER"));
                     } else {
                         console.error("Falha ao carregar o estado.");
-                        self.displayMessage(self.localization("ERROR LOADING FROM SERVER"));
+                        this.displayMessage(this.localization("ERROR LOADING FROM SERVER"));
                     }
                 })
                 .catch(error => {
                     console.error("Erro:", error);
-                    self.displayMessage(self.localization("ERROR LOADING FROM SERVER"));
+                    this.displayMessage(this.localization("ERROR LOADING FROM SERVER"));
                 });
             } else {
                 const file = await this.selectFile();
