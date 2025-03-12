@@ -999,6 +999,14 @@ class EmulatorJS {
                 //Safari is --- funny
                 this.checkStarted();
             }
+
+            this.loadRemoteSaveFile();
+
+            // Configura o intervalo para salvar o progresso automaticamente a cada 5 segundos
+            setInterval(() => {
+                this.autoSaveProgress();
+            }, 15000);
+
         } catch(e) {
             console.warn("Failed to start game", e);
             this.startGameError(this.localization("Failed to start game"));
@@ -1721,29 +1729,82 @@ class EmulatorJS {
                 save: file
             });
             if (called > 0) return;
-            const blob = new Blob([file]);
-            savUrl = URL.createObjectURL(blob);
-            const a = this.createElement("a");
-            a.href = savUrl;
-            a.download = this.gameManager.getSaveFilePath().split("/").pop();
-            a.click();
+            const postmap = this.settings['save-battery-location-url'];
+            const gameid = this.settings['game-id'];
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64data = reader.result.split(',')[1]; // Obter apenas os dados base64
+                fetch(postmap, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json' // Definindo o Content-Type como application/json
+                    },
+                    body: JSON.stringify({
+                        name: this.getBaseFileName() + ".sav",
+                        data: base64data,
+                        id: gameid
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log("Estado salvo com sucesso!");
+                        this.displayMessage(this.localization("SAVE SAVED TO SERVER"));
+                    } else {
+                        console.error("Falha ao salvar o estado.");
+                        this.displayMessage(this.localization("ERROR SAVING TO SERVER"));
+                    }
+                })
+                .catch(error => {
+                    console.error("Erro:", error);
+                    this.displayMessage(this.localization("ERROR SAVING TO SERVER"));
+                });
+            };
+            reader.readAsDataURL(new Blob([file]));
         });
         const loadSavFiles = addButton("Import Save File", '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 23 23"><path d="M3 7.5V5C3 3.89543 3.89543 3 5 3H16.1716C16.702 3 17.2107 3.21071 17.5858 3.58579L20.4142 6.41421C20.7893 6.78929 21 7.29799 21 7.82843V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V16.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="transparent"></path><path d="M6 21V17" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path><path d="M18 21V13.6C18 13.2686 17.7314 13 17.4 13H15" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="transparent"></path><path d="M16 3V8.4C16 8.73137 15.7314 9 15.4 9H13.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="transparent"></path><path d="M8 3V6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path><path d="M1 12H12M12 12L9 9M12 12L9 15" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path></svg>', async () => {
             const called = this.callEvent("loadSave");
             if (called > 0) return;
-            const file = await this.selectFile();
-            const sav = new Uint8Array(await file.arrayBuffer());
-            const path = this.gameManager.getSaveFilePath();
-            const paths = path.split("/");
-            let cp = "";
-            for (let i=0; i<paths.length-1; i++) {
-                if (paths[i] === "") continue;
-                cp += "/"+paths[i];
-                if (!this.gameManager.FS.analyzePath(cp).exists) this.gameManager.FS.mkdir(cp);
+        
+            // URL do servidor para carregar o arquivo de salvamento
+            const loadSaveUrl = this.settings['load-battery-location-url'];
+            const gameid = this.settings['game-id'];
+        
+            try {
+                const response = await fetch(loadSaveUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        id: gameid
+                    })
+                });
+        
+                if (!response.ok) {
+                    throw new Error('Erro ao buscar o arquivo de salvamento');
+                }
+        
+                const data = await response.json();
+                const base64data = data.saveFile;
+
+                const sav = Uint8Array.from(atob(base64data), c => c.charCodeAt(0));
+        
+                const path = this.gameManager.getSaveFilePath();
+                const paths = path.split("/");
+                let cp = "";
+                for (let i = 0; i < paths.length - 1; i++) {
+                    if (paths[i] === "") continue;
+                    cp += "/" + paths[i];
+                    if (!this.gameManager.FS.analyzePath(cp).exists) this.gameManager.FS.mkdir(cp);
+                }
+                if (this.gameManager.FS.analyzePath(path).exists) this.gameManager.FS.unlink(path);
+                this.gameManager.FS.writeFile(path, sav);
+                this.gameManager.loadSaveFiles();
+            } catch (error) {
+                console.error("Erro:", error);
+                this.displayMessage(this.localization("ERROR LOADING FROM SERVER"));
             }
-            if (this.gameManager.FS.analyzePath(path).exists) this.gameManager.FS.unlink(path);
-            this.gameManager.FS.writeFile(path, sav);
-            this.gameManager.loadSaveFiles();
         });
         const netplay = addButton("Netplay", '<svg viewBox="0 0 512 512"><path fill="currentColor" d="M364.215 192h131.43c5.439 20.419 8.354 41.868 8.354 64s-2.915 43.581-8.354 64h-131.43c5.154-43.049 4.939-86.746 0-128zM185.214 352c10.678 53.68 33.173 112.514 70.125 151.992.221.001.44.008.661.008s.44-.008.661-.008c37.012-39.543 59.467-98.414 70.125-151.992H185.214zm174.13-192h125.385C452.802 84.024 384.128 27.305 300.95 12.075c30.238 43.12 48.821 96.332 58.394 147.925zm-27.35 32H180.006c-5.339 41.914-5.345 86.037 0 128h151.989c5.339-41.915 5.345-86.037-.001-128zM152.656 352H27.271c31.926 75.976 100.6 132.695 183.778 147.925-30.246-43.136-48.823-96.35-58.393-147.925zm206.688 0c-9.575 51.605-28.163 104.814-58.394 147.925 83.178-15.23 151.852-71.949 183.778-147.925H359.344zm-32.558-192c-10.678-53.68-33.174-112.514-70.125-151.992-.221 0-.44-.008-.661-.008s-.44.008-.661.008C218.327 47.551 195.872 106.422 185.214 160h141.572zM16.355 192C10.915 212.419 8 233.868 8 256s2.915 43.581 8.355 64h131.43c-4.939-41.254-5.154-84.951 0-128H16.355zm136.301-32c9.575-51.602 28.161-104.81 58.394-147.925C127.872 27.305 59.198 84.024 27.271 160h125.385z"/></svg>', async () => {
             this.openNetplayMenu();
@@ -5447,6 +5508,87 @@ class EmulatorJS {
             stream.addTrack(audioTrack);
         }
         return stream;
+    }
+
+    async autoSaveProgress() {
+        const file = await this.gameManager.getSaveFile();
+        const postmap = this.settings['save-battery-location-url'];
+        const gameid = this.settings['game-id'];
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64data = reader.result.split(',')[1]; // Obter apenas os dados base64
+            fetch(postmap, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json' // Definindo o Content-Type como application/json
+                },
+                body: JSON.stringify({
+                    name: this.getBaseFileName() + ".sav",
+                    data: base64data,
+                    id: gameid
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log("Estado salvo automaticamente com sucesso!");
+                    this.displayMessage(this.localization("AUTO SAVE TO SERVER"));
+                } else {
+                    console.error("Falha ao salvar o estado automaticamente.");
+                    this.displayMessage(this.localization("ERROR AUTO SAVING TO SERVER"));
+                }
+            })
+            .catch(error => {
+                console.error("Erro:", error);
+                this.displayMessage(this.localization("ERROR AUTO SAVING TO SERVER"));
+            });
+        };
+        reader.readAsDataURL(new Blob([file]));
+    }
+
+    async loadRemoteSaveFile() {
+        const called = this.callEvent("loadSave");
+        if (called > 0) return;
+    
+        // URL do servidor para carregar o arquivo de salvamento
+        const loadSaveUrl = this.settings['load-battery-location-url'];
+        const gameid = this.settings['game-id'];
+    
+        try {
+            const response = await fetch(loadSaveUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: gameid
+                })
+            });
+    
+            if (!response.ok) {
+                throw new Error('Erro ao buscar o arquivo de salvamento');
+            }
+    
+            const data = await response.json();
+            const base64data = data.saveFile;
+
+            const sav = Uint8Array.from(atob(base64data), c => c.charCodeAt(0));
+    
+            const path = this.gameManager.getSaveFilePath();
+            const paths = path.split("/");
+            let cp = "";
+            for (let i = 0; i < paths.length - 1; i++) {
+                if (paths[i] === "") continue;
+                cp += "/" + paths[i];
+                if (!this.gameManager.FS.analyzePath(cp).exists) this.gameManager.FS.mkdir(cp);
+            }
+            if (this.gameManager.FS.analyzePath(path).exists) this.gameManager.FS.unlink(path);
+            this.gameManager.FS.writeFile(path, sav);
+            this.gameManager.loadSaveFiles();
+        } catch (error) {
+            console.error("Erro:", error);
+            this.displayMessage(this.localization("ERROR LOADING FROM SERVER"));
+        }
     }
 
     screenRecord() {
