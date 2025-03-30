@@ -5532,15 +5532,15 @@ class EmulatorJS {
             .then(data => {
                 if (data.success) {
                     console.log("Estado salvo automaticamente com sucesso!");
-                    this.displayMessage(this.localization("AUTO SAVE TO SERVER"));
+                    this.displayMessage(this.localization("💾"));
                 } else {
                     console.error("Falha ao salvar o estado automaticamente.");
-                    this.displayMessage(this.localization("ERROR AUTO SAVING TO SERVER"));
+                    this.displayMessage(this.localization("🚫🌐"));
                 }
             })
             .catch(error => {
                 console.error("Erro:", error);
-                this.displayMessage(this.localization("ERROR AUTO SAVING TO SERVER"));
+                this.displayMessage(this.localization("🚫🌐"));
             });
         };
         reader.readAsDataURL(new Blob([file]));
