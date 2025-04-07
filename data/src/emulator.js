@@ -1662,10 +1662,10 @@ class EmulatorJS {
                     .then(data => {
                         if (data.success) {
                             console.log("Estado salvo com sucesso!");
-                            this.displayMessage(this.localization("SAVE SAVED TO SERVER"));
+                            self.displayMessage("💾 - ".concat(sslot));
                         } else {
                             console.error("Falha ao salvar o estado.");
-                            this.displayMessage(this.localization("ERROR SAVING TO SERVER"));
+                            self.displayMessage(this.localization("ERROR SAVING TO SERVER"));
                         }
                     })
                     .catch(error => {
@@ -5535,36 +5535,30 @@ class EmulatorJS {
         const file = await this.gameManager.getSaveFile();
         const postmap = this.settings['save-battery-location-url'];
         const gameid = this.settings['game-id'];
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64data = reader.result.split(',')[1]; // Obter apenas os dados base64
-            fetch(postmap, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json' // Definindo o Content-Type como application/json
-                },
-                body: JSON.stringify({
-                    name: this.getBaseFileName() + ".sav",
-                    data: base64data,
-                    id: gameid
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
+        const fileName = this.getBaseFileName();
+
+        if (window.Worker) {
+            const worker = new Worker('/js/emulatorjs.min/data/workers/autoSaveWorker.js');
+            worker.postMessage({ file, postmap, gameid, fileName });
+
+            worker.onmessage = (event) => {
+                if (event.data.success) {
                     console.log("Estado salvo automaticamente com sucesso!");
-                    this.displayMessage(this.localization("💾"));
+                    this.displayMessage("💾🤝☁️");
                 } else {
-                    console.error("Falha ao salvar o estado automaticamente.");
-                    this.displayMessage(this.localization("🚫🌐"));
+                    console.error("Falha ao salvar o estado automaticamente:", event.data.message);
+                    this.displayMessage("❌🌐");
                 }
-            })
-            .catch(error => {
-                console.error("Erro:", error);
-                this.displayMessage(this.localization("🚫🌐"));
-            });
-        };
-        reader.readAsDataURL(new Blob([file]));
+            };
+
+            worker.onerror = (error) => {
+                console.error("Erro no worker:", error.message);
+                this.displayMessage("❌🌐");
+            };
+        } else {
+            console.error("Workers não são suportados neste navegador.");
+            this.displayMessage("❌🌐");
+        }
     }
 
     async loadRemoteSaveFile() {
