@@ -201,6 +201,7 @@ class EmulatorJS {
     }
     constructor(element, config) {
         this.ejs_version = "4.2.1";
+        this.batterySave = null;
         this.extensions = [];
         this.initControlVars();
         this.debug = (window.EJS_DEBUG_XX === true);
@@ -674,6 +675,19 @@ class EmulatorJS {
             });
         })
     }
+    downloadBatteryState() {
+        return new Promise(async (resolve, reject) => {
+            this.textElem.innerText = this.localization("Download Save File");
+            try {
+                await this.loadRemoteSaveFile(); // Aguarda a execução do método assíncrono
+                resolve(); // Resolve a Promise se tudo ocorrer bem
+            } catch (error) {
+                console.error("Error downloading battery state:", error); // Log do erro
+                this.startGameError(this.localization('Network Error'));
+                return;
+            }
+        });
+    }
     downloadGameFile(assetUrl, type, progressMessage, decompressProgressMessage) {
         return new Promise(async (resolve, reject) => {
             if ((typeof assetUrl !== "string" || !assetUrl.trim()) && !this.toData(assetUrl, true)) {
@@ -901,6 +915,7 @@ class EmulatorJS {
             await this.downloadStartState();
             await this.downloadGameParent();
             await this.downloadGamePatch();
+            await this.downloadBatteryState();
             this.startGame();
         })();
     }
@@ -1000,19 +1015,25 @@ class EmulatorJS {
                 this.checkStarted();
             }
 
-            this.loadRemoteSaveFile();
-
-            // Configura o intervalo para salvar o progresso automaticamente a cada 5 segundos
-            setInterval(() => {
-                this.autoSaveProgress();
-            }, 15000);
-
         } catch(e) {
             console.warn("Failed to start game", e);
             this.startGameError(this.localization("Failed to start game"));
             this.callEvent("exit");
             return;
         }
+        this.displayMessage(this.localization("LOADING SAVE BATTERY"));
+        this.startBattery()
+        .catch((e) => {
+            console.warn("Falha ao carregar save remoto", e);
+        })
+        .finally(() => {
+            // Só aqui começa o autoSaveProgress
+            setInterval(() => {
+                this.autoSaveProgress();
+            }, 15000);
+        });
+
+
         this.callEvent("start");
     }
     checkStarted() {
@@ -5551,8 +5572,10 @@ class EmulatorJS {
         if (called > 0) return;
     
         // URL do servidor para carregar o arquivo de salvamento
-        const loadSaveUrl = this.settings['load-battery-location-url'];
-        const gameid = this.settings['game-id'];
+        //const loadSaveUrl = this.settings['load-battery-location-url'];
+        const loadSaveUrl = EJS_defaultOptions['load-battery-location-url'];
+        //const gameid = this.settings['game-id'];
+        const gameid = EJS_defaultOptions['game-id'];
     
         try {
             const response = await fetch(loadSaveUrl, {
@@ -5566,15 +5589,16 @@ class EmulatorJS {
             });
     
             if (!response.ok) {
-                throw new Error('Erro ao buscar o arquivo de salvamento');
+                console.warn("Falha ao carregar o arquivo de salvamento.");
+            }else{
+                const data = await response.json();
+                const base64data = data.saveFile;
+    
+                const sav = Uint8Array.from(atob(base64data), c => c.charCodeAt(0));
+                
+                this.batterySave = sav;    
             }
-    
-            const data = await response.json();
-            const base64data = data.saveFile;
-
-            const sav = Uint8Array.from(atob(base64data), c => c.charCodeAt(0));
-    
-            const path = this.gameManager.getSaveFilePath();
+            /*const path = this.gameManager.getSaveFilePath();
             const paths = path.split("/");
             let cp = "";
             for (let i = 0; i < paths.length - 1; i++) {
@@ -5584,9 +5608,30 @@ class EmulatorJS {
             }
             if (this.gameManager.FS.analyzePath(path).exists) this.gameManager.FS.unlink(path);
             this.gameManager.FS.writeFile(path, sav);
-            this.gameManager.loadSaveFiles();
+            this.gameManager.loadSaveFiles();*/
         } catch (error) {
             console.error("Erro:", error);
+            this.displayMessage(this.localization("ERROR LOADING FROM SERVER"));
+        }
+    }
+    async startBattery(){
+        try {
+            if(this.batterySave != null){
+                const path = this.gameManager.getSaveFilePath();
+                const paths = path.split("/");
+                let cp = "";
+                for (let i = 0; i < paths.length - 1; i++) {
+                    if (paths[i] === "") continue;
+                    cp += "/" + paths[i];
+                    if (!this.gameManager.FS.analyzePath(cp).exists) this.gameManager.FS.mkdir(cp);
+                }
+                if (this.gameManager.FS.analyzePath(path).exists) this.gameManager.FS.unlink(path);
+                this.gameManager.FS.writeFile(path, this.batterySave);
+                this.gameManager.loadSaveFiles();
+            }else{
+                this.displayMessage(this.localization("NEW GAME FILE."));
+            }
+        } catch (error) {
             this.displayMessage(this.localization("ERROR LOADING FROM SERVER"));
         }
     }
